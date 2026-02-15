@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* NProgress customization - blue loading bar */
+#nprogress .bar {
+  background: #2563EB !important;
+  height: 3px !important;
+}
+#nprogress .peg {
+  box-shadow: 0 0 10px #2563EB, 0 0 5px #2563EB !important;
+}
+#nprogress .spinner-icon {
+  border-top-color: #2563EB !important;
+  border-left-color: #2563EB !important;
+}
