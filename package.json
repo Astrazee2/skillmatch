@@ -13,6 +13,7 @@
     "db:seed": "cd server && npm run db:seed"
   },
   "devDependencies": {
+    "@types/node": "^25.2.3",
     "concurrently": "^8.2.2"
   }
 }
