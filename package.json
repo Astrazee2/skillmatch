@@ -7,13 +7,11 @@
     "dev:client": "cd client && npm run dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "build": "cd server && npm run build && cd ../client && npm run build",
-    "build:server": "cd server && npm run build",
-    "build:client": "cd client && npm run build",
     "db:generate": "cd server && npx prisma generate",
     "db:migrate": "cd server && npx prisma migrate dev",
     "db:push": "cd server && npx prisma db push",
     "db:seed": "cd server && npm run db:seed",
-    "render-build": "npm install && cd server && npx prisma generate && cd .. && npm run build"
+    "render-build": "cd server && npm install && npx prisma generate && npm run build && cd ../client && npm install && npm run build"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
