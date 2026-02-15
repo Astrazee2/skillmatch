@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { Briefcase, MessageSquare } from 'lucide-react'
-import StatusBadge from './shared/StatusBadge'
 import toast from 'react-hot-toast'
 import Spinner from './shared/Spinner'
 import { ProjectCardSkeleton } from './shared/Skeleton'
 import EmptyState from './shared/EmptyState'
+import { ApplicationStatusBadge } from './shared/StatusBadge'
 
 interface Project {
   id: string
@@ -16,16 +16,16 @@ interface Project {
   budgetMax: number
   deadline: string
   requiredSkills: string[]
-  sme?: { companyName: string; industry: string }
+  sme?: { userId: string; companyName: string; industry?: string }
 }
 
 interface Application {
   id: string
-  status: string
+  status: 'pending' | 'accepted' | 'rejected'
   proposalText: string
   quotedPrice?: number
   appliedAt: string
-  project: Project & { sme?: { userId: string; companyName?: string } }
+  project: Project
 }
 
 export default function SpecialistDashboard() {
@@ -42,7 +42,7 @@ export default function SpecialistDashboard() {
   const [form, setForm] = useState<any>({})
   const [submitting, setSubmitting] = useState(false)
   const [applyModal, setApplyModal] = useState<{ project: Project; proposal: string; quotedPrice: string } | null>(null)
-  const [applicationStatusFilter, setApplicationStatusFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all')
+  const [applicationFilter, setApplicationFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all')
 
   useEffect(() => {
     loadData()
@@ -276,63 +276,61 @@ export default function SpecialistDashboard() {
             <EmptyState icon={Briefcase} title="No applications yet" description="Apply to projects to see your applications here." action={<button onClick={() => setActiveTab('projects')} className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-blue-700">Browse Projects</button>} />
           ) : (
             <>
-              <div className="flex flex-wrap gap-2 mb-6">
-                {(['all', 'pending', 'accepted', 'rejected'] as const).map((status) => (
+              <div className="flex gap-2 mb-6 flex-wrap">
+                {(['all', 'pending', 'accepted', 'rejected'] as const).map((f) => (
                   <button
-                    key={status}
-                    onClick={() => setApplicationStatusFilter(status)}
+                    key={f}
+                    onClick={() => setApplicationFilter(f)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                      applicationStatusFilter === status ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      applicationFilter === f ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
-                    {` (${status === 'all' ? applications.length : applications.filter((a) => a.status === status).length})`}
+                    {f === 'all' ? 'All' : f === 'pending' ? 'Under Review' : f === 'accepted' ? 'Accepted' : 'Not Selected'}
+                    {' '}({f === 'all' ? applications.length : applications.filter((a) => a.status === f).length})
                   </button>
                 ))}
               </div>
               <div className="space-y-4">
                 {applications
-                  .filter((app) => applicationStatusFilter === 'all' || app.status === applicationStatusFilter)
+                  .filter((app) => applicationFilter === 'all' || app.status === applicationFilter)
                   .map((app) => (
                     <div
                       key={app.id}
                       className={`rounded-xl shadow p-6 border ${
-                        app.status === 'accepted'
-                          ? 'bg-green-50/50 border-green-200'
-                          : app.status === 'rejected'
-                          ? 'bg-red-50/30 border-red-100 opacity-90'
-                          : 'bg-white border-gray-100'
+                        app.status === 'accepted' ? 'bg-green-50/50 border-green-200' :
+                        app.status === 'rejected' ? 'bg-gray-50 border-gray-200 opacity-90' :
+                        'bg-white border-gray-100'
                       }`}
                     >
                       <div className="flex justify-between items-start gap-4">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold text-lg">{app.project.title}</h3>
-                            <StatusBadge type="application" status={app.status as any} variant="specialist" />
-                          </div>
+                          <h3 className="font-semibold text-lg">{app.project.title}</h3>
                           <p className="text-sm text-gray-600 mt-1">{app.project.category} • ${app.project.budgetMin} - ${app.project.budgetMax}</p>
-                          {app.project.sme?.companyName && (
-                            <p className="text-sm text-gray-500">{app.project.sme.companyName}</p>
-                          )}
+                          {app.project.sme && <p className="text-sm text-gray-500">{app.project.sme.companyName}</p>}
                           <p className="text-gray-600 mt-2 line-clamp-2">{app.proposalText}</p>
-                          {app.quotedPrice && <p className="text-primary font-medium mt-1">Your quoted price: ${app.quotedPrice}</p>}
-                          <p className="text-gray-400 text-xs mt-1">Applied {new Date(app.appliedAt).toLocaleDateString()}</p>
-                          <div className="mt-4">
+                          <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+                            {app.quotedPrice != null && <span className="text-primary font-medium">Quoted: ${app.quotedPrice}</span>}
+                            <span className="text-gray-500">Applied: {new Date(app.appliedAt).toLocaleDateString()}</span>
+                          </div>
+                          <div className="mt-3 flex gap-2">
                             {app.status === 'pending' && (
-                              <p className="text-sm text-gray-500 italic">Awaiting client response...</p>
+                              <span className="text-gray-500 text-sm">Awaiting client response...</span>
                             )}
                             {app.status === 'accepted' && app.project.sme?.userId && (
                               <button
-                                onClick={() => setMessageTo({ id: app.project.sme!.userId, name: app.project.sme?.companyName || 'Client' })}
-                                className="flex items-center gap-2 text-primary font-medium hover:underline"
+                                onClick={() => setMessageTo({ id: app.project.sme!.userId, name: app.project.sme!.companyName })}
+                                className="text-sm text-primary font-medium hover:underline"
                               >
-                                <MessageSquare className="w-4 h-4" /> Contact SME
+                                Contact SME
                               </button>
                             )}
-                            {app.status === 'rejected' && (
-                              <p className="text-sm text-gray-500">This application was not selected for this project.</p>
+                            {app.status === 'accepted' && (
+                              <span className="text-sm text-green-600 font-medium">View project details in Messages</span>
                             )}
                           </div>
+                        </div>
+                        <div className="flex-shrink-0">
+                          <ApplicationStatusBadge status={app.status} variant="specialist" />
                         </div>
                       </div>
                     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { MessageSquare, Briefcase, Users, ChevronDown } from 'lucide-react'
@@ -6,11 +6,21 @@ import toast from 'react-hot-toast'
 import Spinner from './shared/Spinner'
 import { ProjectCardSkeleton, SpecialistCardSkeleton } from './shared/Skeleton'
 import EmptyState from './shared/EmptyState'
-import StatusBadge from './shared/StatusBadge'
+import { ProjectStatusBadge, ApplicationStatusBadge } from './shared/StatusBadge'
 
 const CATEGORIES = ['Design', 'Marketing', 'Tech', 'Operations', 'Finance']
-const PROJECT_STATUSES = ['open', 'in_progress', 'completed', 'cancelled'] as const
-const APPLICATION_STATUSES = ['pending', 'accepted', 'rejected'] as const
+
+type ProjectStatus = 'open' | 'in_progress' | 'completed' | 'cancelled'
+type ApplicationStatusType = 'pending' | 'accepted' | 'rejected'
+
+interface Application {
+  id: string
+  status: ApplicationStatusType
+  proposalText: string
+  quotedPrice?: number
+  appliedAt: string
+  specialist: Specialist
+}
 
 interface Project {
   id: string
@@ -19,9 +29,9 @@ interface Project {
   budgetMin: number
   budgetMax: number
   deadline: string
-  status: string
+  status: ProjectStatus
   requiredSkills: string[]
-  applications?: { id: string; status: string; proposalText: string; quotedPrice?: number; appliedAt: string; specialist: Specialist }[]
+  applications?: Application[]
 }
 
 interface Specialist {
@@ -59,25 +69,12 @@ export default function SMEDashboard() {
   const [submitting, setSubmitting] = useState(false)
   const [smeForm, setSmeForm] = useState({ companyName: '', industry: '', companySize: '', phone: '' })
   const [messages, setMessages] = useState<any[]>([])
-  const [projectStatusFilter, setProjectStatusFilter] = useState<'all' | typeof PROJECT_STATUSES[number]>('all')
-  const [applicationStatusFilter, setApplicationStatusFilter] = useState<'all' | typeof APPLICATION_STATUSES[number]>('all')
-  const [statusDropdownOpen, setStatusDropdownOpen] = useState<string | null>(null)
-  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
-  const [statusChangeConfirm, setStatusChangeConfirm] = useState<{ projectId: string; newStatus: string } | null>(null)
+  const [projectStatusFilter, setProjectStatusFilter] = useState<'all' | ProjectStatus>('all')
+  const [applicationFilter, setApplicationFilter] = useState<'all' | ApplicationStatusType>('pending')
+  const [statusChangeProject, setStatusChangeProject] = useState<{ id: string; status: ProjectStatus } | null>(null)
+  const [statusChangeLoading, setStatusChangeLoading] = useState(false)
+  const [statusChangeConfirm, setStatusChangeConfirm] = useState<{ projectId: string; newStatus: ProjectStatus } | null>(null)
   const { user: authUser } = useAuth()
-  const statusDropdownRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
-        setStatusDropdownOpen(null)
-      }
-    }
-    if (statusDropdownOpen) {
-      document.addEventListener('click', handleClickOutside)
-    }
-    return () => document.removeEventListener('click', handleClickOutside)
-  }, [statusDropdownOpen])
 
   useEffect(() => {
     loadData()
@@ -169,19 +166,18 @@ export default function SMEDashboard() {
     }
   }
 
-  const handleProjectStatusChange = async (projectId: string, newStatus: string) => {
-    setStatusChangeConfirm(null)
-    setStatusDropdownOpen(null)
-    setUpdatingStatusId(projectId)
+  const handleProjectStatusChange = async (projectId: string, newStatus: ProjectStatus) => {
+    setStatusChangeLoading(true)
     try {
       await api.patch(`/projects/${projectId}/status`, { status: newStatus })
       loadData()
-      const labels: Record<string, string> = { open: 'Open', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' }
-      toast.success(`Project marked as ${labels[newStatus] || newStatus}`)
+      toast.success(`Project marked as ${newStatus.replace('_', ' ')}`)
+      setStatusChangeProject(null)
+      setStatusChangeConfirm(null)
     } catch (e: any) {
       toast.error(e.response?.data?.error || 'Failed to update project status')
     } finally {
-      setUpdatingStatusId(null)
+      setStatusChangeLoading(false)
     }
   }
 
@@ -189,7 +185,7 @@ export default function SMEDashboard() {
     ? projects
     : projects.filter((p) => p.status === projectStatusFilter)
 
-  const projectStatusCounts = {
+  const projectCounts = {
     all: projects.length,
     open: projects.filter((p) => p.status === 'open').length,
     in_progress: projects.filter((p) => p.status === 'in_progress').length,
@@ -197,11 +193,8 @@ export default function SMEDashboard() {
     cancelled: projects.filter((p) => p.status === 'cancelled').length,
   }
 
-  const filterApplications = (apps: Project['applications']) => {
-    if (!apps) return []
-    if (applicationStatusFilter === 'all') return apps
-    return apps.filter((a: any) => a.status === applicationStatusFilter)
-  }
+  const filterApplications = (apps: Application[] = []) =>
+    applicationFilter === 'all' ? apps : apps.filter((a) => a.status === applicationFilter)
 
   return (
     <div className="space-y-8">
@@ -391,19 +384,19 @@ export default function SMEDashboard() {
             />
           ) : (
             <>
-              <div className="flex flex-wrap gap-2 mb-6">
-                {(['all', ...PROJECT_STATUSES] as const).map((status) => (
+              <div className="flex gap-2 mb-6 flex-wrap">
+                {(['all', 'open', 'in_progress', 'completed', 'cancelled'] as const).map((status) => (
                   <button
                     key={status}
                     onClick={() => setProjectStatusFilter(status)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium ${
                       projectStatusFilter === status
                         ? 'bg-primary text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
-                    {status === 'all' ? 'All' : status.replace('_', ' ')}
-                    {` (${status === 'all' ? projectStatusCounts.all : projectStatusCounts[status]})`}
+                    {status === 'all' ? 'All' : status === 'in_progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+                    {' '}({projectCounts[status === 'all' ? 'all' : status]})
                   </button>
                 ))}
               </div>
@@ -423,41 +416,36 @@ export default function SMEDashboard() {
                           </div>
                         )}
                       </div>
-                      <div
-                        className="flex items-center gap-2 flex-shrink-0"
-                        ref={(el) => { if (statusDropdownOpen === p.id) statusDropdownRef.current = el }}
-                      >
-                        <StatusBadge type="project" status={p.status as any} />
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <ProjectStatusBadge status={p.status} />
                         <div className="relative">
                           <button
-                            onClick={() => setStatusDropdownOpen(statusDropdownOpen === p.id ? null : p.id)}
-                            disabled={updatingStatusId === p.id}
-                            className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => setStatusChangeProject(statusChangeProject?.id === p.id ? null : { id: p.id, status: p.status })}
+                            className="p-2 rounded-lg hover:bg-gray-100"
+                            title="Change status"
                           >
-                            {updatingStatusId === p.id ? (
-                              <Spinner size="sm" />
-                            ) : (
-                              <ChevronDown className={`w-4 h-4 transition ${statusDropdownOpen === p.id ? 'rotate-180' : ''}`} />
-                            )}
+                            <ChevronDown className="w-4 h-4" />
                           </button>
-                          {statusDropdownOpen === p.id && (
-                            <div className="absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
-                              {PROJECT_STATUSES.map((status) => (
+                          {statusChangeProject?.id === p.id && (
+                            <div className="absolute right-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                              {(['open', 'in_progress', 'completed', 'cancelled'] as ProjectStatus[]).map((s) => (
                                 <button
-                                  key={status}
+                                  key={s}
                                   onClick={() => {
-                                    setStatusDropdownOpen(null)
-                                    if (status === 'completed' || status === 'cancelled') {
-                                      setStatusChangeConfirm({ projectId: p.id, newStatus: status })
+                                    if (s === 'completed' || s === 'cancelled') {
+                                      setStatusChangeConfirm({ projectId: p.id, newStatus: s })
+                                      setStatusChangeProject(null)
                                     } else {
-                                      handleProjectStatusChange(p.id, status)
+                                      handleProjectStatusChange(p.id, s)
+                                      setStatusChangeProject(null)
                                     }
                                   }}
-                                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${
-                                    p.status === status ? 'bg-primary/5 text-primary font-medium' : 'text-gray-700'
+                                  disabled={statusChangeLoading}
+                                  className={`block w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                                    p.status === s ? 'bg-primary/10 text-primary font-medium' : ''
                                   }`}
                                 >
-                                  {status.replace('_', ' ')}
+                                  {s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
                                 </button>
                               ))}
                             </div>
@@ -467,65 +455,57 @@ export default function SMEDashboard() {
                     </div>
                     {p.applications && p.applications.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-3">
                           <h4 className="text-sm font-medium text-gray-700">Applications</h4>
                           <div className="flex gap-1">
-                            {(['all', ...APPLICATION_STATUSES] as const).map((status) => (
+                            {(['all', 'pending', 'accepted', 'rejected'] as const).map((f) => (
                               <button
-                                key={status}
-                                onClick={() => setApplicationStatusFilter(status)}
+                                key={f}
+                                onClick={() => setApplicationFilter(f)}
                                 className={`px-2 py-1 rounded text-xs font-medium ${
-                                  applicationStatusFilter === status ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'
+                                  applicationFilter === f ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'
                                 }`}
                               >
-                                {status}
+                                {f.charAt(0).toUpperCase() + f.slice(1)}
                               </button>
                             ))}
                           </div>
                         </div>
                         {filterApplications(p.applications).length === 0 ? (
-                          <p className="text-sm text-gray-500 py-2">No applications match the selected filter.</p>
+                          <p className="text-gray-500 text-sm py-2">No {applicationFilter === 'all' ? '' : applicationFilter} applications</p>
                         ) : (
-                          filterApplications(p.applications).map((app: any) => (
+                          filterApplications(p.applications).map((app) => (
                             <div
                               key={app.id}
-                              className={`py-3 px-4 rounded-lg border mb-2 last:mb-0 ${
-                                app.status === 'accepted'
-                                  ? 'bg-green-50 border-green-200'
-                                  : app.status === 'rejected'
-                                  ? 'bg-red-50/50 border-red-100 opacity-90'
-                                  : 'bg-gray-50/50 border-gray-100'
+                              className={`flex items-center justify-between py-3 px-3 rounded-lg border mb-2 last:mb-0 ${
+                                app.status === 'accepted' ? 'bg-green-50 border-green-200' :
+                                app.status === 'rejected' ? 'bg-red-50/50 border-red-200 opacity-80' :
+                                'bg-gray-50 border-gray-100'
                               }`}
                             >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex gap-3 min-w-0">
-                                  <img src={app.specialist.profilePhotoUrl || 'https://i.pravatar.cc/80'} alt="" className="w-10 h-10 rounded-full flex-shrink-0" />
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-medium">{app.specialist.fullName}</span>
-                                      <StatusBadge type="application" status={app.status} variant="sme" />
-                                    </div>
-                                    <p className="text-gray-500 text-sm mt-0.5">${app.specialist.hourlyRate}/hr • {app.specialist.experienceYears}y exp</p>
-                                    <p className="text-gray-600 text-sm mt-2 line-clamp-2">{app.proposalText}</p>
-                                    {app.quotedPrice && <p className="text-primary font-medium text-sm mt-1">Quoted: ${app.quotedPrice}</p>}
-                                    <p className="text-gray-400 text-xs mt-1">Applied {new Date(app.appliedAt).toLocaleDateString()}</p>
-                                    {app.status === 'pending' && (
-                                      <div className="mt-2 flex gap-2">
-                                        <button
-                                          onClick={() => handleApplicationStatus(app.id, 'accepted')}
-                                          className="text-sm text-green-600 font-medium hover:underline"
-                                        >
-                                          Accept
-                                        </button>
-                                        <button
-                                          onClick={() => handleApplicationStatus(app.id, 'rejected')}
-                                          className="text-sm text-red-600 font-medium hover:underline"
-                                        >
-                                          Reject
-                                        </button>
-                                      </div>
-                                    )}
+                              <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <img src={app.specialist.profilePhotoUrl || 'https://i.pravatar.cc/80'} alt="" className="w-10 h-10 rounded-full flex-shrink-0" />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium">{app.specialist.fullName}</span>
+                                    <ApplicationStatusBadge status={app.status} variant="sme" />
                                   </div>
+                                  <p className="text-gray-600 text-sm mt-0.5 line-clamp-1">{app.proposalText}</p>
+                                  <p className="text-gray-500 text-xs mt-1">
+                                    ${app.specialist.hourlyRate}/hr • {app.specialist.experienceYears}y exp
+                                    {app.quotedPrice != null && ` • Quoted: $${app.quotedPrice}`}
+                                    {' • '}{new Date(app.appliedAt).toLocaleDateString()}
+                                  </p>
+                                  {app.status === 'pending' && (
+                                    <div className="mt-2 flex gap-2">
+                                      <button onClick={() => handleApplicationStatus(app.id, 'accepted')} className="text-sm text-green-600 font-medium hover:underline">
+                                        Accept
+                                      </button>
+                                      <button onClick={() => handleApplicationStatus(app.id, 'rejected')} className="text-sm text-red-600 font-medium hover:underline">
+                                        Reject
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -544,17 +524,13 @@ export default function SMEDashboard() {
                       Are you sure you want to mark this project as {statusChangeConfirm.newStatus.replace('_', ' ')}?
                     </p>
                     <div className="mt-6 flex gap-3 justify-end">
-                      <button
-                        onClick={() => setStatusChangeConfirm(null)}
-                        className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={() => setStatusChangeConfirm(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
                       <button
                         onClick={() => handleProjectStatusChange(statusChangeConfirm.projectId, statusChangeConfirm.newStatus)}
-                        className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700"
+                        disabled={statusChangeLoading}
+                        className="px-4 py-2 flex items-center gap-2 bg-primary text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                       >
-                        Confirm
+                        {statusChangeLoading ? <><Spinner size="sm" className="border-white border-t-transparent" /> Updating...</> : 'Confirm'}
                       </button>
                     </div>
                   </div>

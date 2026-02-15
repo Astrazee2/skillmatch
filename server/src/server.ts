@@ -25,7 +25,6 @@ app.use('/api/messages', messageRoutes)
 app.use('/api/matching', matchingRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/contact', contactRoutes)
-app.use('/api/public', publicRoutes)
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }))
 

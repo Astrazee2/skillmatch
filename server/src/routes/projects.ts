@@ -85,7 +85,7 @@ router.patch('/:id/status', authMiddleware, requireRole('sme'), async (req: any,
   try {
     const { status } = req.body
     if (!status || !VALID_PROJECT_STATUSES.includes(status)) {
-      return res.status(400).json({ error: 'Invalid status. Must be one of: open, in_progress, completed, cancelled' })
+      return res.status(400).json({ error: 'Status must be one of: open, in_progress, completed, cancelled' })
     }
     const sme = await prisma.sMEProfile.findUnique({ where: { userId: req.user.userId } })
     if (!sme) return res.status(404).json({ error: 'SME profile not found' })
